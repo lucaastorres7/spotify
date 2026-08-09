@@ -1,8 +1,11 @@
+from contextlib import asynccontextmanager
+
 import uvicorn
 from fastapi import FastAPI
 
 from app.config import settings
-from app.logging import setup_logging
+from app.database import db
+from app.logging import get_logger, setup_logging
 from app.logging.middleware import RequestContextMiddleware
 from app.routes import health_router
 
@@ -14,8 +17,21 @@ setup_logging(
   env=settings.env,
   version=settings.version,
 )
+log = get_logger(__name__)
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+  await db.connect()
+  log.info("Connected to the Database")
+  app.state.db = db
+  try:
+    yield
+  finally:
+    await db.close()
+
+
+app = FastAPI(lifespan=lifespan, title=settings.service_name)
 
 # -- Middlewares --
 app.add_middleware(RequestContextMiddleware)
